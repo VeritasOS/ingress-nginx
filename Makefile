@@ -120,7 +120,7 @@ else
 	$(SED_I) "s/CROSS_BUILD_//g" $(DOCKERFILE)
 endif
 
-	$(DOCKER) build --no-cache --pull -t $(MULTI_ARCH_IMG):$(TAG) $(TEMP_DIR)/rootfs
+	$(DOCKER) build --no-cache --label git_remote=$(shell git remote get-url origin) --label git_commit_id=$(shell git rev-parse HEAD) -t $(MULTI_ARCH_IMG):$(TAG) $(TEMP_DIR)/rootfs
 
 ifeq ($(ARCH), amd64)
 	# This is for maintaining backward compatibility
