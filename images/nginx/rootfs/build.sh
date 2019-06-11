@@ -20,6 +20,8 @@ set -o nounset
 set -o pipefail
 
 export NGINX_VERSION=1.15.10
+export CMAKE_VERSION=3.14.5
+export CURL_VERSION=7.65.1
 export NDK_VERSION=0.3.1rc1
 export SETMISC_VERSION=0.32
 export MORE_HEADERS_VERSION=0.33
@@ -61,33 +63,69 @@ get_src()
 
 apt-get update && apt-get dist-upgrade -y
 
+OPENSSL_URL="FIPS_OPENSSL"
+if [ -n "$OPENSSL_URL" ]; then
+    # Download sources required for setting up custom OpenSSL
+    apt-get -y --no-install-recommends install curl ca-certificates openssl
+    (mkdir -p /opt/openssl && cd /opt/openssl && curl -L FIPS_OPENSSL | tar xzf -)
+    (cd /opt && curl -L https://curl.haxx.se/download/curl-$CURL_VERSION.tar.gz | tar xzf -)
+    (cd /opt && curl -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz | tar xzf -)
+    apt-get -y remove ca-certificates openssl curl
+
+    # Install 3rd-party OpenSSL
+    OPENSSL_DIR=/opt/openssl
+    ln -sf $OPENSSL_DIR/bin/openssl /usr/bin/openssl
+    rm -rf /usr/include/openssl && ln -sf $OPENSSL_DIR/include/openssl /usr/include
+    for lib in crypto ssl; do
+        for vers in '' '.1.0.0' '.1.0.2'; do
+            ln -sf $OPENSSL_DIR/lib/lib$lib.so /usr/lib/x86_64-linux-gnu/lib$lib.so$vers
+        done
+    done
+    mkdir -p /usr/local/ssl
+    touch /usr/local/ssl/openssl.cnf
+
+    # Make sure system openssl packages do not supersede our files
+    dpkg-divert --add /usr/bin/openssl
+    dpkg-divert --add /usr/lib/libcrypto.so.1.0.2
+    dpkg-divert --add /usr/lib/libssl.so.1.0.2
+
+    # Install libcurl using custom OpenSSL
+    apt-get -y --no-install-recommends install \
+        build-essential \
+        pkgconf
+
+    (cd /opt/curl-$CURL_VERSION && ./configure && make && make install)
+
+    # Install cmake from upstream so OS libcurl is not installed
+    export PATH=/opt/cmake-$CMAKE_VERSION-Linux-x86_64/bin:$PATH
+else
+    apt-get -y --no-install-recommends install libcurl4-openssl-dev cmake curl
+fi
+
 # install required packages to build
-clean-install \
+apt-get -y --no-install-recommends install \
   bash \
-  build-essential \
-  curl ca-certificates \
+  ca-certificates \
   libgeoip1 \
   libgeoip-dev \
   patch \
   libpcre3 \
   libpcre3-dev \
-  libssl-dev \
   zlib1g \
   zlib1g-dev \
   libaio1 \
   libaio-dev \
   openssl \
+  libssl1.0-dev \
   libperl-dev \
-  cmake \
   util-linux \
   lua5.1 liblua5.1-0 liblua5.1-dev \
   lmdb-utils \
   wget \
-  libcurl4-openssl-dev \
   libprotobuf-dev protobuf-compiler \
   libz-dev \
   procps \
-  git g++ pkgconf flex bison doxygen libyajl-dev liblmdb-dev libtool dh-autoreconf libxml2 libpcre++-dev libxml2-dev \
+  git g++ flex bison doxygen libyajl-dev liblmdb-dev libtool dh-autoreconf libxml2 libpcre++-dev libxml2-dev \
   lua-cjson \
   python \
   luarocks \
@@ -481,6 +519,9 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 
 # apply Nginx patches
 patch -p1 < /patches/openresty-ssl_cert_cb_yield.patch
+if [ -n "$OPENSSL_URL" ]; then
+    patch -p1 < /patches/fips-mode.patch
+fi
 
 WITH_FLAGS="--with-debug \
   --with-compat \
@@ -592,7 +633,6 @@ apt-get remove -y --purge \
   build-essential \
   libgeoip-dev \
   libpcre3-dev \
-  libssl-dev \
   zlib1g-dev \
   libaio-dev \
   linux-libc-dev \
@@ -607,10 +647,14 @@ apt-get remove -y --purge \
 
 apt-get autoremove -y
 
+apt-get clean -y
+
 rm -rf "$BUILD_PATH"
+rm -rf /opt/cmake-$CMAKE_VERSION-Linux-x86_64
 rm -Rf /usr/share/man /usr/share/doc
 rm -rf /tmp/* /var/tmp/*
 rm -rf /var/lib/apt/lists/*
+rm -rf /var/cache/debconf/* /var/log/*
 rm -rf /var/cache/apt/archives/*
 rm -rf /usr/local/modsecurity/bin
 rm -rf /usr/local/modsecurity/include

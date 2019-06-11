@@ -32,8 +32,7 @@ IMGNAME = nginx
 IMAGE = $(REGISTRY)/$(IMGNAME)
 MULTI_ARCH_IMG = $(IMAGE)-$(ARCH)
 
-# Set default base image dynamically for each arch
-BASEIMAGE?=quay.io/kubernetes-ingress-controller/debian-base-$(ARCH):0.1
+BASEIMAGE=library/debian:stretch
 
 ifeq ($(ARCH),arm64)
 	QEMUARCH=aarch64
@@ -61,6 +60,7 @@ container: .container-$(ARCH)
 	cp -r ./rootfs/* $(TEMP_DIR)
 	cd $(TEMP_DIR) && $(SED_I) 's|BASEIMAGE|$(BASEIMAGE)|g' Dockerfile
 	cd $(TEMP_DIR) && $(SED_I) "s|ARCH|$(QEMUARCH)|g" Dockerfile
+	cd $(TEMP_DIR) && $(SED_I) "s|FIPS_OPENSSL|$(FIPS_OPENSSL)|g" build.sh
 
 ifeq ($(ARCH),amd64)
 	# When building "normally" for amd64, remove the whole line, it has no part in the amd64 image

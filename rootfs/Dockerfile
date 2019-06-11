@@ -18,9 +18,12 @@ CROSS_BUILD_COPY qemu-QEMUARCH-static /usr/bin/
 
 WORKDIR  /etc/nginx
 
-RUN clean-install \
+RUN apt-get update && apt-get -y --no-install-recommends install \
   diffutils \
-  libcap2-bin
+  libcap2-bin \
+  && apt-get autoclean -y \
+  && apt-get clean -y \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=www-data:www-data . /
 
