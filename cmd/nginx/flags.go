@@ -164,6 +164,10 @@ Feature backed by OpenResty Lua libraries. Requires that OCSP stapling is not en
 	flags.MarkDeprecated("status-port", `The status port is a unix socket now.`)
 	flags.MarkDeprecated("force-namespace-isolation", `This flag doesn't do anything.`)
 
+
+	flags.StringVar(&nginx.MaxmindLicenseKey, "maxmind-license-key", "", `Maxmind license key to download GeoLite2 Databases.
+https://blog.maxmind.com/2019/12/18/significant-changes-to-accessing-and-using-geolite2-databases`)
+
 	flag.Set("logtostderr", "true")
 
 	flags.AddGoFlagSet(flag.CommandLine)
@@ -256,6 +260,14 @@ Feature backed by OpenResty Lua libraries. Requires that OCSP stapling is not en
 			SSLProxy: *sslProxyPort,
 		},
 		DisableCatchAll: *disableCatchAll,
+	}
+
+	if nginx.MaxmindLicenseKey != "" {
+		klog.Info("downloading maxmind GeoIP2 databases...")
+		err := nginx.DownloadGeoLite2DB()
+		if err != nil {
+			klog.Errorf("unexpected error downloading GeoIP2 database: %v", err)
+		}
 	}
 
 	return false, config, nil
